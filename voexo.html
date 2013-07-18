@@ -317,7 +317,7 @@ $(function() {	// same as $(document).ready(function() {...});
 				enabled: false
 			},
 			title: {
-				text: 'Historical USD to EUR Exchange Rate'
+				text: 'Highchart: Random Data + Live Mt. Gox Data'
 			},
 			subtitle: {
 				text: 'Select an area by dragging across the lower chart'
@@ -335,7 +335,7 @@ $(function() {	// same as $(document).ready(function() {...});
 					var point = this.points[0];
 					return '<b>'+ point.series.name +'</b><br/>'+
 						Highcharts.dateFormat('%A %B %e %Y', this.x) + ':<br/>'+
-						'1 USD = '+ Highcharts.numberFormat(point.y, 2) +' EUR';
+						'1 USD = '+ Highcharts.numberFormat(point.y, 2) +' BTC';
 				},
 				shared: true
 			},
@@ -356,7 +356,7 @@ $(function() {	// same as $(document).ready(function() {...});
 				}
 			},
 			series: [{
-				name: 'USD to EUR',
+				name: 'USD to BTC',
 				//pointStart: detailStart,
 				//pointInterval: 24 * 3600 * 1000,
 				data: detailData
