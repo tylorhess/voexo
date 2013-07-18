@@ -35,7 +35,13 @@ $(function() {	// same as $(document).ready(function() {...});
 	
 	var chartLoadEvent = function() {
 		var conn = io.connect('https://socketio.mtgox.com/mtgox');
+		var isFirstMessage = true;
 		conn.on('message', function(data) {
+			if (isFirstMessage) {
+				console.log("First Message:");
+				console.log(data);
+				isFirstMessage = false;
+			}
 			if (data.channel_name == "ticker.BTCUSD") {
 				var USD = parseFloat(data.ticker.last.value);
 				var date = new Date()
