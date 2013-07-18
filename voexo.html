@@ -1,0 +1,429 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+	<meta charset="utf-8" />
+	<title>voexo</title>
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<meta name="description" content="">
+	<meta name="author" content="">
+	
+	<!-- jQuery -->
+	<script src="http://code.jquery.com/jquery-2.0.3.min.js"></script>
+	
+	<!-- Boostrap -->
+	<link href="http://twitter.github.io/bootstrap/assets/css/bootstrap.css" rel="stylesheet">
+	<script src="http://twitter.github.io/bootstrap/assets/js/bootstrap.min.js"></script>
+	
+	<!-- Highstock/Highcharts -->
+	<!-- <script src="http://code.highcharts.com/highcharts.js"></script> -->
+	<script src="http://code.highcharts.com/stock/highstock.js"></script>
+	<script src="http://code.highcharts.com/stock/modules/exporting.js"></script>
+	
+	<!-- socket.io -->
+	<script type="text/javascript" src="https://socketio.mtgox.com/socket.io/socket.io.js"></script>
+	
+	<script>
+$(function() {	// same as $(document).ready(function() {...});
+	
+	// Note: define highstockDemo before "load" event-handler
+	var highstockDemo, highchartDemo;
+	
+	// chart "load" event-handler
+	// Note: define chart "load" event-handler before initializing highstockDemo
+	
+	
+	var chartLoadEvent = function() {
+		var conn = io.connect('https://socketio.mtgox.com/mtgox');
+		conn.on('message', function(data) {
+			if (data.channel_name == "ticker.BTCUSD") {
+				var USD = parseFloat(data.ticker.last.value);
+				var date = new Date()
+				$("span.price").html(data.ticker.last.display);
+				// .addPoint({x:#, y:#}) OR .addPoint([x, y]) OR .addPoint([x, open, high, low, close]) for candlestick or OHLC
+				// .addPoint([x, y], redraw?, removeFirst?, animate?)
+				// default: .addPoint([x, y], true, false, true)
+				highstockDemo.series[0].addPoint([date.getTime(),USD]);
+				masterChart.series[0].addPoint([date.getTime(),USD]);
+				//highchartDemo.series[0].addPoint([date.getTime(),USD], true, true);
+				console.log("added: ["+date.toTimeString().split(" ")[0]+", "+USD+"]");
+			}
+		});
+	}
+	
+	// initialize highstock
+	Highcharts.setOptions({
+		global : {
+			useUTC : false
+		}
+	});
+	highstockDemo = new Highcharts.StockChart({
+		chart : {
+			events : {
+				//load : chartLoadEvent
+			},
+			renderTo: 'highstock'	// <div id="highstock"></div>
+		},
+		
+		rangeSelector: {
+			buttons: [{
+				count: 1,
+				type: 'minute',
+				text: '1 m'
+			}, {
+				count: 5,
+				type: 'minute',
+				text: '5 m'
+			}, {
+				type: 'all',
+				text: 'All'
+			}],
+			inputEnabled: false,
+			selected: 2
+		},
+		
+		title : {
+			text : 'Highstock: Random Data + Live Mt. Gox Data'
+		},
+		
+		exporting: {
+			enabled: false
+		},
+		
+		series : [{
+			name : 'Random data',
+			data : hsData,
+			type : 'spline'
+		}]
+	});
+	
+	// ---------- Highchart ----------
+	/*highchartDemo = new Highcharts.Chart({
+		chart: {
+			type: 'spline',
+			animation: Highcharts.svg, // don't animate in old IE
+			height : 350,
+			marginRight: 10,
+			events: {
+				load: chartLoadEvent
+			},
+			renderTo: 'highchart'	// <div id="highchart"></div>
+		},
+		title: {
+			text: 'Highcharts: Random Data + Live Mt. Gox Data'
+		},
+		xAxis: {
+			type: 'datetime',
+			tickPixelInterval: 150
+		},
+		yAxis: {
+			title: {
+				text: null
+			}
+		},
+		plotOptions : {
+			spline : {
+				marker : {
+					enabled : false
+				}
+			}
+		},
+		tooltip: {
+			formatter: function() {
+					return '<b>'+ this.series.name +'</b><br/>'+
+					Highcharts.dateFormat('%Y-%m-%d %H:%M:%S', this.x) +'<br/>'+
+					Highcharts.numberFormat(this.y, 2);
+			}
+		},
+		legend: {
+			enabled: false
+		},
+		exporting: {
+			enabled: false
+		},
+		series: [{
+			name: 'Random data',
+			data: hcData
+		}]
+	});*/
+	
+	// ---------- Highchart Master/Detail ----------
+	// create the master chart
+	var masterChart;
+	var detailChart;
+	function createMaster() {
+		masterChart = $('#master').highcharts({
+			chart: {
+				reflow: false,
+				borderWidth: 0,
+				backgroundColor: null,
+				marginLeft: 50,
+				marginRight: 20,
+				zoomType: 'x',
+				events: {
+					
+					load : chartLoadEvent,
+					
+					// listen to the selection event on the master chart to update the
+					// extremes of the detail chart
+					selection: function(event) {
+						var extremesObject = event.xAxis[0],
+							min = extremesObject.min,
+							max = extremesObject.max,
+							detailData = [],
+							xAxis = this.xAxis[0];
+						
+						// reverse engineer the last part of the hcData
+						jQuery.each(this.series[0].data, function(i, point) {
+							if (point.x > min && point.x < max) {
+								detailData.push({
+									x: point.x,
+									y: point.y
+								});
+							}
+						});
+
+						// move the plot bands to reflect the new detail span
+						xAxis.removePlotBand('mask-before');
+						xAxis.addPlotBand({
+							id: 'mask-before',
+							//from: Date.UTC(2006, 0, 1),
+							from: this.series[0].data[0].x,
+							to: min,
+							color: 'rgba(0, 0, 0, 0.2)'
+						});
+
+						xAxis.removePlotBand('mask-after');
+						xAxis.addPlotBand({
+							id: 'mask-after',
+							from: max,
+							//to: Date.UTC(2008, 11, 31),
+							to: this.series[0].data[this.series[0].data.length-1].x,
+							color: 'rgba(0, 0, 0, 0.2)'
+						});
+
+
+						detailChart.series[0].setData(detailData);
+
+						return false;
+					}
+				}
+			},
+			title: {
+				text: null
+			},
+			xAxis: {
+				type: 'datetime',
+				showLastTickLabel: true,
+				//maxZoom: 14 * 24 * 3600000, // fourteen days
+				plotBands: [{
+					id: 'mask-before',
+					from: hcData[0].x,
+					to: hcData[hcData.length-1].x,
+					color: 'rgba(0, 0, 0, 0.2)'
+				}],
+				title: {
+					text: null
+				}
+			},
+			yAxis: {
+				gridLineWidth: 0,
+				labels: {
+					enabled: false
+				},
+				title: {
+					text: null
+				},
+				min: hcDataMin,
+				showFirstLabel: false
+			},
+			tooltip: {
+				formatter: function() {
+					return false;
+				}
+			},
+			legend: {
+				enabled: false
+			},
+			credits: {
+				enabled: false
+			},
+			plotOptions: {
+				series: {
+					fillColor: {
+						linearGradient: [0, 0, 0, 70],
+						stops: [
+							[0, '#4572A7'],
+							[1, 'rgba(0,0,0,0)']
+						]
+					},
+					lineWidth: 1,
+					marker: {
+						enabled: false
+					},
+					shadow: false,
+					states: {
+						hover: {
+							lineWidth: 1
+						}
+					},
+					enableMouseTracking: false
+				}
+			},
+
+			series: [{
+				type: 'area',
+				name: 'USD to EUR',
+				//pointInterval: 24 * 3600 * 1000,
+				//pointStart: Date.UTC(2006, 0, 01),
+				data: hcData
+			}],
+
+			exporting: {
+				enabled: false
+			}
+
+		}, function(masterChart) {
+			createDetail(masterChart)
+		})
+		.highcharts(); // return chart instance
+	}
+
+	// create the detail chart
+	function createDetail(masterChart) {
+
+		// prepare the detail chart
+		var detailData = [],
+			detailStart = Date.UTC(2008, 7, 1);
+
+		jQuery.each(masterChart.series[0].data, function(i, point) {
+			if (point.x >= detailStart) {
+				detailData.push(point.y);
+			}
+		});
+
+		// create a detail chart referenced by a global variable
+		detailChart = $('#detail').highcharts({
+			chart: {
+				marginBottom: 120,
+				reflow: false,
+				marginLeft: 50,
+				marginRight: 20,
+				style: {
+					position: 'absolute'
+				}
+			},
+			credits: {
+				enabled: false
+			},
+			title: {
+				text: 'Historical USD to EUR Exchange Rate'
+			},
+			subtitle: {
+				text: 'Select an area by dragging across the lower chart'
+			},
+			xAxis: {
+				type: 'datetime'
+			},
+			yAxis: {
+				title: {
+					text: null
+				},
+			},
+			tooltip: {
+				formatter: function() {
+					var point = this.points[0];
+					return '<b>'+ point.series.name +'</b><br/>'+
+						Highcharts.dateFormat('%A %B %e %Y', this.x) + ':<br/>'+
+						'1 USD = '+ Highcharts.numberFormat(point.y, 2) +' EUR';
+				},
+				shared: true
+			},
+			legend: {
+				enabled: false
+			},
+			plotOptions: {
+				series: {
+					marker: {
+						enabled: false,
+						states: {
+							hover: {
+								enabled: true,
+								radius: 3
+							}
+						}
+					}
+				}
+			},
+			series: [{
+				name: 'USD to EUR',
+				//pointStart: detailStart,
+				//pointInterval: 24 * 3600 * 1000,
+				data: detailData
+			}],
+
+			exporting: {
+				enabled: false
+			}
+
+		}).highcharts(); // return chart
+	}
+
+	// make the container smaller and add a second container for the master chart
+	
+	var $container = $('#container').css('position', 'relative');
+	
+	//var $detailContainer = $('<div id="detail-container">').appendTo($container);
+	//var $detailContainer = $('#detail');
+	
+	//var $masterContainer = $('<div id="master-container">').css({ position: 'absolute', top: 300, height: 80, width: '100%' }).appendTo($container);
+	var $masterContainer = $('#master').css({ position: 'absolute', top: 705, height: 80, width: '100%' });
+
+	// create master and in its callback, create the detail chart
+	createMaster();
+	
+});	// end of  $(document).ready(function() {...});
+	
+	// generate an array of random data
+	var hsData = [];
+	var hcData = [];
+	var generateInitialData = function() {
+		var time = (new Date()).getTime();
+		var previousValue = 97;
+		var newValue;
+		for(var i = 1; i < 1000; i++) {
+			newValue = previousValue - 0.05 + Math.round(Math.random() * 10)/100.0;
+				hsData.push([time - i * 1000, newValue]);
+				hcData.push({
+					x : time - i * 1000,
+					y : newValue
+				});
+			previousValue = newValue;
+		}
+		hsData.reverse();
+		hcData.reverse();
+	}
+	generateInitialData();
+	var calcMinY = function(array) {
+		var min = array[0].y;
+		for (var c=0; c < array.length; c++) {
+			if (array[c].y < min) {
+				min = array[c].y;
+			}
+		}
+		return min;
+	};
+	var hcDataMin = calcMinY(hcData);
+	</script>
+	
+</head>
+<body>
+	<div style="text-align:center;">1 BTC = <span class="price"></span></div>
+	<div id="highstock" ></div>
+	<div id="highchart">
+		<div id="detail"></div>
+		<div id="master"></div>
+	</div>
+	
+</body>
+</html>
